@@ -207,22 +207,57 @@ struct MapPane: View {
         ))
     }
 
+    /// Move the camera to a coordinate, keeping the current zoom level.
+    private func center(on coordinate: CLLocationCoordinate2D) {
+        camera = .camera(MapCamera(
+            centerCoordinate: coordinate,
+            distance: (mapCamera?.distance ?? 12_000).clamped(to: Self.zoomRange),
+            heading: mapCamera?.heading ?? 0,
+            pitch: mapCamera?.pitch ?? 0
+        ))
+    }
+
     private var zoomControls: some View {
-        VStack(spacing: 0) {
-            Button { stepZoom(0.5) } label: {
-                Image(systemName: "plus").frame(width: 22, height: 20)
+        VStack(spacing: 6) {
+            stack {
+                mapButton("plus", "Zoom in") { stepZoom(0.5) }
+                Divider().frame(width: 22)
+                mapButton("minus", "Zoom out") { stepZoom(2.0) }
             }
-            Divider().frame(width: 22)
-            Button { stepZoom(2.0) } label: {
-                Image(systemName: "minus").frame(width: 22, height: 20)
+
+            stack {
+                mapButton("location.circle", "Centre on your real location") {
+                    if let real = model.location.coordinate { center(on: real) }
+                }
+                .disabled(model.location.coordinate == nil)
+
+                Divider().frame(width: 22)
+
+                mapButton("iphone.gen3", "Centre on the phone's simulated location") {
+                    if let simulated = model.simulatedCoordinate { center(on: simulated) }
+                }
+                .disabled(model.simulatedCoordinate == nil)
             }
         }
-        .buttonStyle(.plain)
-        .font(.system(size: 10, weight: .semibold))
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
-        .shadow(radius: 2, y: 1)
         .padding(8)
+    }
+
+    /// Shared chrome for the floating map control clusters.
+    private func stack<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0) { content() }
+            .buttonStyle(.plain)
+            .font(.system(size: 10, weight: .semibold))
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+            .shadow(radius: 2, y: 1)
+    }
+
+    private func mapButton(_ symbol: String, _ help: String, action: @escaping () -> Void)
+        -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).frame(width: 22, height: 20)
+        }
+        .help(help)
     }
 
     /// True when the selected pin is the place the phone is already reporting.

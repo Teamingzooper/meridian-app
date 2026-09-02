@@ -43,4 +43,10 @@ PLIST
 codesign --force --deep --sign - "$APP" 2>/dev/null \
   || echo "note: ad-hoc signing failed; the app still runs but Gatekeeper may prompt"
 
+# LaunchServices caches bundle metadata, including whether the app is a menu-bar
+# accessory. Without this, `open` can launch an older registration and the main
+# window silently never appears.
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+[ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$APP" 2>/dev/null || true
+
 echo "Built $APP"
