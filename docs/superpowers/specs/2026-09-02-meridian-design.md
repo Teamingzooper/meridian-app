@@ -33,44 +33,54 @@ So the Python side is one long-lived sidecar, not a series of one-shot commands.
 ## Architecture
 
     Meridian.app     SwiftUI MenuBarExtra - MapKit - MKLocalSearch - MKDirections
-        |        bookmarks, history, route editor, playback controls
-        |  HTTP/JSON on 127.0.0.1
+        |            bookmarks, history, route editor, playback controls
+        |  HTTP/JSON on 127.0.0.1, bearer token
         v
     meridiand        Python sidecar, runs unprivileged as the user
-        |        holds the DVT LocationSimulation session
-        |        interpolates routes, pushes ~1 point/sec
-        |  RSD over the tunnel
-        v
-    tunneld      pymobiledevice3's own daemon, root, installed once
-        |        upstream code - not ours to write or maintain
+        |            holds Apple's native tunnel + the DVT LocationSimulation channel
+        |            interpolates routes, pushes ~1 fix/sec
         v  USB
      iPhone
 
 ### Components
 
-**tunneld** — upstream pymobiledevice3, installed once as a root LaunchDaemon.
-Publishes connected devices and their RSD address/port over a local REST endpoint.
-The only component needing root, and not our code.
-
-**meridiand** — our sidecar, unprivileged. Polls tunneld for the device, auto-mounts
-the DDI, holds the DVT session. Five endpoints:
+**meridiand** — the whole device side, in one unprivileged process. It opens a
+tunnel, mounts the DDI if needed, holds the DVT channel, and serves a small local
+API:
 
 | Method | Path        | Body                              | Purpose                     |
 |--------|-------------|-----------------------------------|-----------------------------|
+| GET    | `/health`   | —                                 | liveness, no auth           |
 | GET    | `/status`   | —                                 | device + session state      |
-| POST   | `/location` | `{lat, lon, jitter?}`             | set a fixed point           |
-| POST   | `/route`    | `{coords[], speed_mps, loop}`     | start playback              |
-| POST   | `/stop`     | —                                 | halt playback, hold position|
+| POST   | `/connect`  | —                                 | open the channel eagerly    |
+| POST   | `/location` | `{lat, lon}`                      | set a fixed point           |
+| POST   | `/route`    | `{coords[], speed, loop}`         | start playback              |
+| POST   | `/pause`    | —                                 | suspend playback            |
+| POST   | `/resume`   | —                                 | continue playback           |
+| POST   | `/stop`     | —                                 | halt, hold current position |
 | POST   | `/clear`    | —                                 | release to real GPS         |
+| POST   | `/jitter`   | `{radiusM}`                       | wander a static fix         |
 
-**Meridian.app** — all visuals. MapKit supplies address search (`MKLocalSearch`) and
-road-following routes (`MKDirections`) built into macOS with no API keys and no
-cost — the two things a browser build would otherwise pay a maps provider for.
+Bound to loopback, and every route but `/health` requires the bearer token
+written to a 0600 file. Loopback alone would let any local process move the
+phone's location.
+
+**Meridian.app** — all visuals. MapKit supplies address search (`MKLocalSearch`)
+and road-following routes (`MKDirections`) built into macOS with no API keys and
+no cost — the two things a browser build would otherwise pay a maps provider for.
 
 ## Privilege model
 
-The tunnel needs root. Setup installs `tunneld` once as a LaunchDaemon: one sudo
-at install time, never again. `meridiand` and the app both run as the user.
+No root, and no installer step.
+
+pymobiledevice3 11 can piggyback Apple's own `remoted` tunnel through
+`remotepairingd` on macOS (`NativeRemotedTunnel`). It needs no privileges and
+coexists with Xcode, so the sidecar opens the tunnel in-process as the logged-in
+user. The original plan — installing pymobiledevice3's `tunneld` as a root
+LaunchDaemon — is kept only as an automatic fallback for the case where the
+native path is unavailable, and is never reached on a healthy macOS 26 machine.
+
+The only thing the user must do on the phone is turn on Developer Mode.
 
 ## Features
 
@@ -116,6 +126,7 @@ views and the device handshake are verified by hand against a real iPhone.
 ## Build order
 
 1. Sidecar first, provably moving a real device's location from a terminal.
+   `meridiand doctor` walks the whole chain and reports where it breaks.
 2. The app on top.
 
 Working software early rather than only at the end.

@@ -32,9 +32,14 @@ class DeviceError(Exception):
 # Matched against the exception's class name, so this table needs no imports and
 # survives pymobiledevice3 reorganising its module layout between releases.
 _BY_EXCEPTION_NAME: dict[str, tuple[str, str, bool]] = {
+    "UserspaceTunnelUnavailableError": (
+        "no_tunnel",
+        "Couldn't open a tunnel to your iPhone. Unplug it, plug it back in, and tap Trust.",
+        True,
+    ),
     "TunneldConnectionError": (
         "engine_down",
-        "The location engine isn't running. Open Meridian's setup to start it.",
+        "Couldn't reach your iPhone through either tunnel. Reconnect the cable and try again.",
         True,
     ),
     "NoDeviceConnectedError": (
@@ -145,6 +150,6 @@ def no_device() -> DeviceError:
 def engine_down() -> DeviceError:
     return DeviceError(
         "engine_down",
-        "The location engine isn't running. Open Meridian's setup to start it.",
+        "Couldn't reach your iPhone through either tunnel. Reconnect the cable and try again.",
         True,
     )

@@ -12,6 +12,8 @@ from .server import DEFAULT_HOST, DEFAULT_PORT, build_server, state_dir, write_t
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="meridiand", description=__doc__)
+    parser.add_argument("command", nargs="?", default="serve", choices=["serve", "doctor"],
+                        help="serve the local API (default), or run an end-to-end preflight")
     parser.add_argument("--host", default=DEFAULT_HOST, help="bind address (loopback by default)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--tick-hz", type=float, default=DEFAULT_TICK_HZ,
@@ -29,6 +31,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.host != DEFAULT_HOST:
         logging.warning("binding to %s exposes location control beyond this machine", args.host)
+
+    if args.command == "doctor":
+        from .doctor import main as doctor_main
+
+        return doctor_main()
 
     engine = Engine(tick_hz=args.tick_hz, jitter_m=args.jitter)
     engine.start()
