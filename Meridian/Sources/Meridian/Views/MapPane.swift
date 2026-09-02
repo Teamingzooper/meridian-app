@@ -7,8 +7,10 @@ struct MapPane: View {
     @State private var query = ""
     @State private var camera: MapCameraPosition = .automatic
     @State private var visibleRegion: MKCoordinateRegion?
-    /// A point dropped by double-clicking, awaiting confirmation.
+    /// A point dropped from the map's context menu, awaiting confirmation.
     @State private var pendingPin: Place?
+    /// Cursor position in map-local coordinates, captured for the context menu.
+    @State private var hoverPoint: CGPoint?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -111,12 +113,15 @@ struct MapPane: View {
                         .stroke(.purple, lineWidth: 4)
                 }
             }
-            // Double-click rather than single, so panning the map never drops a pin.
-            .onTapGesture(count: 2) { point in
-                guard let coordinate = proxy.convert(point, from: .local) else { return }
-                let place = Place(name: "Dropped pin", coordinate: coordinate)
-                pendingPin = place
-                model.selection = place
+            // Track the cursor so the context menu knows which point was clicked.
+            .onContinuousHover { phase in
+                if case .active(let location) = phase { hoverPoint = location }
+            }
+            // Right-click rather than a tap gesture: single-click pans the map and
+            // double-click is MapKit's own zoom, so neither is ours to take.
+            .contextMenu {
+                Button("Set Location Here…") { placePin(using: proxy) }
+                Button("Add as Waypoint") { addWaypoint(using: proxy) }
             }
             .onMapCameraChange { context in
                 visibleRegion = context.region
@@ -132,7 +137,33 @@ struct MapPane: View {
         }
     }
 
-    /// Confirmation for a double-clicked point, so a stray click never moves the phone.
+    /// The coordinate under the cursor when the context menu was opened.
+    ///
+    /// Falls back to the centre of the visible map if hover tracking gave us
+    /// nothing, so the menu item always does something rather than failing quietly.
+    private func hoveredPlace(using proxy: MapProxy) -> Place? {
+        if let point = hoverPoint, let coordinate = proxy.convert(point, from: .local) {
+            return Place(name: "Dropped pin", coordinate: coordinate)
+        }
+        if let centre = visibleRegion?.center {
+            return Place(name: "Map centre", coordinate: centre)
+        }
+        return nil
+    }
+
+    private func placePin(using proxy: MapProxy) {
+        guard let place = hoveredPlace(using: proxy) else { return }
+        pendingPin = place
+        model.selection = place
+    }
+
+    private func addWaypoint(using proxy: MapProxy) {
+        guard let place = hoveredPlace(using: proxy) else { return }
+        model.selection = place
+        model.addWaypoint(place)
+    }
+
+    /// Confirmation for a placed point, so nothing moves the phone without a second step.
     private func confirmBar(for pending: Place) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "mappin.circle.fill")
