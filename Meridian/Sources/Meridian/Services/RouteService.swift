@@ -78,3 +78,14 @@ extension MKPolyline {
         return result
     }
 }
+
+extension RouteService.Result {
+    /// Total path length in metres, for the distance and duration estimate.
+    var lengthMetres: Double {
+        zip(coordinates, coordinates.dropFirst()).reduce(0) { total, pair in
+            let (a, b) = pair
+            return total + CLLocation(latitude: a.latitude, longitude: a.longitude)
+                .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        }
+    }
+}
