@@ -25,7 +25,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ./meridiand pytest
+          pip install -e './meridiand[test]'
 
       - name: Test
         run: python -m pytest meridiand/tests -q

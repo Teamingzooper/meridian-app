@@ -40,7 +40,7 @@ jobs:
 
       - name: Run the sidecar tests first
         run: |
-          pip install -e ./meridiand pytest
+          pip install -e './meridiand[test]'
           python -m pytest meridiand/tests -q
 
       - name: Package
