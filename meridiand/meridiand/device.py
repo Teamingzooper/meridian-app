@@ -51,15 +51,16 @@ class DeviceInfo:
         }
 
 
-def _describe(rsd: Any, transport: str) -> DeviceInfo:
+def _describe(rsd: Any, transport: str, friendly_name: str = "") -> DeviceInfo:
     """Pull identity off an RSD, tolerating attributes that move between releases."""
-    name = ""
-    for attr in ("device_name", "name"):
-        name = getattr(rsd, attr, "") or ""
-        if name:
-            break
+    name = friendly_name
     if not name:
-        # Fall back to the hardware identifier, e.g. "iPhone16,2".
+        for attr in ("device_name", "name"):
+            name = getattr(rsd, attr, "") or ""
+            if name:
+                break
+    if not name:
+        # Last resort is the hardware identifier, e.g. "iPhone14,2".
         name = getattr(rsd, "product_type", "") or "iPhone"
 
     return DeviceInfo(
@@ -68,6 +69,24 @@ def _describe(rsd: Any, transport: str) -> DeviceInfo:
         ios_version=getattr(rsd, "product_version", "") or "",
         transport=transport,
     )
+
+
+async def _lookup_device_name(udid: str) -> str:
+    """Ask lockdown what the user calls this phone.
+
+    The RSD only reports a hardware identifier like "iPhone14,2". Lockdown knows
+    the name the user actually chose, which is what belongs in the UI. Best
+    effort: a failure here is cosmetic, never a reason to refuse to connect.
+    """
+    from pymobiledevice3.lockdown import create_using_usbmux
+
+    try:
+        lockdown = await asyncio.wait_for(create_using_usbmux(serial=udid or None), timeout=10)
+        name = await asyncio.wait_for(lockdown.get_value(key="DeviceName"), timeout=10)
+        return (name or "").strip()
+    except Exception:
+        logger.debug("could not read DeviceName from lockdown", exc_info=True)
+        return ""
 
 
 class LocationSession:
@@ -209,7 +228,8 @@ class LocationSession:
             stack = AsyncExitStack()
             try:
                 rsd, transport = await self._open_transport(stack, udid)
-                info = _describe(rsd, transport)
+                friendly = await _lookup_device_name(getattr(rsd, "udid", "") or "")
+                info = _describe(rsd, transport, friendly)
 
                 try:
                     simulation = await self._attach(stack, rsd)
