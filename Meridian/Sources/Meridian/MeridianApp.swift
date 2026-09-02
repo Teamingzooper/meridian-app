@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Owns the model for the process lifetime.
 ///
-/// The menu bar content view is not created until the user first opens the
-/// popover, so `onAppear` is far too late to start polling — the helper would
-/// not launch until someone clicked the icon. The app delegate runs on launch.
+/// The menu bar content view is not created until the user first opens it, so
+/// `onAppear` is far too late to start polling — the helper would not launch
+/// until someone clicked the icon. The app delegate runs on launch.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
@@ -16,17 +16,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         model.shutDown()
     }
+
+    /// Clicking the Dock icon with no window open should bring the app back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        true
+    }
 }
 
 @main
 struct MeridianApp: App {
+    static let mainWindowID = "meridian.main"
+
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        MenuBarExtra {
-            RootView()
+        Window("Meridian", id: Self.mainWindowID) {
+            MainWindowView()
                 .environmentObject(delegate.model)
-                .frame(width: 420, height: 640)
+        }
+        .defaultSize(width: 1020, height: 700)
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+        }
+
+        MenuBarExtra {
+            MenuBarPreview()
+                .environmentObject(delegate.model)
         } label: {
             MenuBarLabel(model: delegate.model)
         }

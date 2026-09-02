@@ -3,8 +3,8 @@ import SwiftUI
 /// Bookmarks and recent locations, one tap from being applied.
 struct SavedPane: View {
     @EnvironmentObject private var model: AppModel
-    /// Called after applying, so the caller can switch back to the map.
-    var onApply: () -> Void
+    /// Called after applying, for layouts that need to reveal the map afterwards.
+    var onApply: () -> Void = {}
 
     @State private var section: Section = .bookmarks
     @State private var renaming: Place?
