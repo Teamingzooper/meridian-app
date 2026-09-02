@@ -1,4 +1,4 @@
-# Wisp — Design
+# Meridian — Design
 
 **Date:** 2026-09-02
 **Status:** Approved
@@ -32,11 +32,11 @@ So the Python side is one long-lived sidecar, not a series of one-shot commands.
 
 ## Architecture
 
-    Wisp.app     SwiftUI MenuBarExtra - MapKit - MKLocalSearch - MKDirections
+    Meridian.app     SwiftUI MenuBarExtra - MapKit - MKLocalSearch - MKDirections
         |        bookmarks, history, route editor, playback controls
         |  HTTP/JSON on 127.0.0.1
         v
-    wispd        Python sidecar, runs unprivileged as the user
+    meridiand        Python sidecar, runs unprivileged as the user
         |        holds the DVT LocationSimulation session
         |        interpolates routes, pushes ~1 point/sec
         |  RSD over the tunnel
@@ -52,7 +52,7 @@ So the Python side is one long-lived sidecar, not a series of one-shot commands.
 Publishes connected devices and their RSD address/port over a local REST endpoint.
 The only component needing root, and not our code.
 
-**wispd** — our sidecar, unprivileged. Polls tunneld for the device, auto-mounts
+**meridiand** — our sidecar, unprivileged. Polls tunneld for the device, auto-mounts
 the DDI, holds the DVT session. Five endpoints:
 
 | Method | Path        | Body                              | Purpose                     |
@@ -63,18 +63,18 @@ the DDI, holds the DVT session. Five endpoints:
 | POST   | `/stop`     | —                                 | halt playback, hold position|
 | POST   | `/clear`    | —                                 | release to real GPS         |
 
-**Wisp.app** — all visuals. MapKit supplies address search (`MKLocalSearch`) and
+**Meridian.app** — all visuals. MapKit supplies address search (`MKLocalSearch`) and
 road-following routes (`MKDirections`) built into macOS with no API keys and no
 cost — the two things a browser build would otherwise pay a maps provider for.
 
 ## Privilege model
 
 The tunnel needs root. Setup installs `tunneld` once as a LaunchDaemon: one sudo
-at install time, never again. `wispd` and the app both run as the user.
+at install time, never again. `meridiand` and the app both run as the user.
 
 ## Features
 
-| GhostMe             | Wisp                                                        |
+| GhostMe             | Meridian                                                        |
 |---------------------|-------------------------------------------------------------|
 | Address search      | `MKLocalSearch`, the Apple Maps index                        |
 | Location history    | Auto-recorded, JSON on disk, click to re-apply               |
@@ -88,7 +88,7 @@ adding a few meters of GPS-like noise so a static point does not look frozen.
 
 ## Data
 
-Plain JSON in `~/Library/Application Support/Wisp/`: `bookmarks.json`,
+Plain JSON in `~/Library/Application Support/Meridian/`: `bookmarks.json`,
 `history.json`, `settings.json`. Inspectable, no migration burden.
 
 ## Error handling
