@@ -32,6 +32,11 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <!-- Menu bar only: no Dock icon, no main window. -->
     <key>LSUIElement</key>               <true/>
     <key>NSHumanReadableCopyright</key>  <string>Meridian. Not affiliated with Apple Inc.</string>
+    <!-- Shows your real position in green next to the phone's simulated one in blue. -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Meridian shows your real location on the map so you can see it next to the location your iPhone is reporting.</string>
+    <key>NSLocationUsageDescription</key>
+    <string>Meridian shows your real location on the map so you can see it next to the location your iPhone is reporting.</string>
 </dict>
 </plist>
 PLIST

@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     let store = PlaceStore()
     let search = SearchService()
     let routing = RouteService()
+    let location = LocationService()
 
     private let client = DaemonClient()
     private let launcher = HelperLauncher()
@@ -40,14 +41,22 @@ final class AppModel: ObservableObject {
     // MARK: - Lifecycle
 
     func start() {
+        location.start()
         pollTask = Task { [weak self] in
             await self?.pollForever()
         }
     }
 
     func shutDown() {
+        location.stop()
         pollTask?.cancel()
         launcher.terminate()
+    }
+
+    /// Where the phone is currently pretending to be, if anywhere.
+    var simulatedCoordinate: CLLocationCoordinate2D? {
+        guard status.mode != .idle, let point = status.location else { return nil }
+        return CLLocationCoordinate2D(latitude: point.lat, longitude: point.lon)
     }
 
     /// Poll status so the UI reflects reality even when changed from elsewhere.
@@ -60,6 +69,12 @@ final class AppModel: ObservableObject {
 
             if alive {
                 if let fresh = try? await client.status() { status = fresh }
+
+                // Reconnect on its own when a phone is plugged back in. The sidecar
+                // checks USB first, so this costs nothing while nothing is attached.
+                if !status.connected, let reconnected = try? await client.connect() {
+                    status = reconnected
+                }
             } else if !launchAttempted {
                 launchAttempted = true
                 if launcher.launch() {
@@ -83,7 +98,13 @@ final class AppModel: ObservableObject {
             }
 
             // Fast enough to feel live during playback, idle enough to be free.
-            try? await Task.sleep(for: .milliseconds(status.mode == .route ? 500 : 1500))
+            // Back off while disconnected, since each pass is attempting a connect.
+            let interval: Duration = switch (status.mode, status.connected) {
+            case (.route, _): .milliseconds(500)
+            case (_, false): .seconds(4)
+            default: .milliseconds(1500)
+            }
+            try? await Task.sleep(for: interval)
         }
     }
 

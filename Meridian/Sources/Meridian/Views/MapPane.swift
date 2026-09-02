@@ -24,6 +24,7 @@ struct MapPane: View {
             }
 
             actionBar
+            legend
         }
     }
 
@@ -104,13 +105,31 @@ struct MapPane: View {
     private var map: some View {
         MapReader { proxy in
             Map(position: $camera) {
-                if let selection = model.selection {
-                    Marker(selection.name, coordinate: selection.coordinate)
-                        .tint(pendingPin == nil ? .blue : .orange)
+                // Green: where you actually are.
+                if let real = model.location.coordinate {
+                    Annotation("You are here", coordinate: real) {
+                        RealLocationDot()
+                    }
+                    .annotationTitles(.hidden)
                 }
+
+                // Blue: where the phone is reporting from right now.
+                if let simulated = model.simulatedCoordinate {
+                    Marker("Simulated", coordinate: simulated)
+                        .tint(.blue)
+                }
+
+                // Orange: chosen but not sent to the phone yet — a search result or
+                // a right-clicked point. Hidden once it is the applied location, so
+                // one place never shows two pins.
+                if let selection = model.selection, !selectionIsApplied {
+                    Marker(selection.name, coordinate: selection.coordinate)
+                        .tint(.orange)
+                }
+
                 if let preview = model.routePreview {
                     MapPolyline(coordinates: preview.coordinates)
-                        .stroke(.purple, lineWidth: 4)
+                        .stroke(.blue, lineWidth: 4)
                 }
             }
             // Track the cursor so the context menu knows which point was clicked.
@@ -135,6 +154,13 @@ struct MapPane: View {
             }
             .animation(.easeInOut(duration: 0.16), value: pendingPin)
         }
+    }
+
+    /// True when the selected pin is the place the phone is already reporting.
+    private var selectionIsApplied: Bool {
+        guard let selection = model.selection,
+              let simulated = model.simulatedCoordinate else { return false }
+        return selection.isEffectivelySame(as: simulated)
     }
 
     /// The coordinate under the cursor when the context menu was opened.
@@ -241,7 +267,40 @@ struct MapPane: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.top, 9)
+        .padding(.bottom, 2)
+    }
+
+    /// Says what the colours mean, so the map needs no explaining.
+    private var legend: some View {
+        HStack(spacing: 12) {
+            if model.location.isDenied {
+                Label("Location access off — no green dot", systemImage: "location.slash")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            } else {
+                key(color: .green, label: "You")
+            }
+
+            if model.simulatedCoordinate != nil {
+                key(color: .blue, label: "Phone")
+            }
+            if model.selection != nil, !selectionIsApplied {
+                key(color: .orange, label: "Selected")
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
+    }
+
+    private func key(color: Color, label: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(color).frame(width: 7, height: 7)
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var isBookmarked: Bool {

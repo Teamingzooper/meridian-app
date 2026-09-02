@@ -47,7 +47,7 @@ struct RoutePane: View {
                         .font(.system(size: 10, weight: .bold, design: .rounded))
                         .foregroundStyle(.white)
                         .frame(width: 17, height: 17)
-                        .background(Circle().fill(.purple))
+                        .background(Circle().fill(.blue))
 
                     VStack(alignment: .leading, spacing: 1) {
                         Text(place.name)
