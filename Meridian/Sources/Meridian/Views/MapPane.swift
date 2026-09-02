@@ -7,6 +7,8 @@ struct MapPane: View {
     @State private var query = ""
     @State private var camera: MapCameraPosition = .automatic
     @State private var visibleRegion: MKCoordinateRegion?
+    /// A point dropped by double-clicking, awaiting confirmation.
+    @State private var pendingPin: Place?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -86,6 +88,7 @@ struct MapPane: View {
     private func choose(_ item: MKMapItem) {
         let place = Place(name: item.displayName, coordinate: item.placemark.coordinate)
         model.selection = place
+        pendingPin = nil
         camera = .region(MKCoordinateRegion(
             center: place.coordinate,
             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
@@ -101,21 +104,69 @@ struct MapPane: View {
             Map(position: $camera) {
                 if let selection = model.selection {
                     Marker(selection.name, coordinate: selection.coordinate)
-                        .tint(.blue)
+                        .tint(pendingPin == nil ? .blue : .orange)
                 }
                 if let preview = model.routePreview {
                     MapPolyline(coordinates: preview.coordinates)
                         .stroke(.purple, lineWidth: 4)
                 }
             }
-            .onTapGesture { point in
+            // Double-click rather than single, so panning the map never drops a pin.
+            .onTapGesture(count: 2) { point in
                 guard let coordinate = proxy.convert(point, from: .local) else { return }
-                model.selection = Place(name: "Dropped pin", coordinate: coordinate)
+                let place = Place(name: "Dropped pin", coordinate: coordinate)
+                pendingPin = place
+                model.selection = place
             }
             .onMapCameraChange { context in
                 visibleRegion = context.region
             }
+            .overlay(alignment: .bottom) {
+                if let pending = pendingPin {
+                    confirmBar(for: pending)
+                        .padding(10)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.16), value: pendingPin)
         }
+    }
+
+    /// Confirmation for a double-clicked point, so a stray click never moves the phone.
+    private func confirmBar(for pending: Place) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "mappin.circle.fill")
+                .foregroundStyle(.orange)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Set location here?")
+                    .font(.system(size: 12, weight: .medium))
+                Text(pending.prettyCoordinates)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 6)
+
+            Button("Cancel") {
+                pendingPin = nil
+                model.selection = nil
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Button("Confirm") {
+                model.apply(pending)
+                pendingPin = nil
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .keyboardShortcut(.defaultAction)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
+        .shadow(radius: 5, y: 2)
     }
 
     // MARK: - Actions

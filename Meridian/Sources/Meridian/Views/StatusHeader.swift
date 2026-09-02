@@ -17,12 +17,22 @@ struct StatusHeader: View {
 
                 Spacer()
 
-                if model.status.mode != .idle {
-                    Button("Reset", action: model.clearLocation)
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 11))
-                        .help("Give the phone its real GPS back")
-                }
+                Text(model.isSimulating ? "On" : "Off")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(model.isSimulating ? .primary : .secondary)
+                    .monospacedDigit()
+
+                Toggle("", isOn: Binding(
+                    get: { model.isSimulating },
+                    set: { model.setSimulating($0) }
+                ))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+                .disabled(!model.canToggle)
+                .help(model.isSimulating
+                      ? "Switch off and give the phone its real GPS back"
+                      : "Switch back on at \(model.lastApplied?.name ?? "the last place")")
             }
 
             Text(subtitle)
@@ -60,6 +70,9 @@ struct StatusHeader: View {
 
         switch model.status.mode {
         case .idle:
+            if let last = model.lastApplied {
+                return "Real GPS · switch on for \(last.name)"
+            }
             return "iOS \(device.iosVersion) · real GPS"
         case .fixed:
             guard let location = model.status.location else { return "Simulating a location" }

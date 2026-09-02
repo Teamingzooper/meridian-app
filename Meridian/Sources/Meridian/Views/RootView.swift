@@ -65,12 +65,28 @@ private struct FooterBar: View {
 
             Spacer()
 
-            Button("Quit") {
-                model.shutDown()
-                NSApplication.shared.terminate(nil)
+            if let device = model.status.device {
+                Text(device.name)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
-            .buttonStyle(.borderless)
-            .font(.system(size: 11))
+
+            // Quit lives behind a menu so the header toggle is the only on/off control.
+            Menu {
+                Button("Clear History") { model.store.clearHistory() }
+                Divider()
+                Button("Quit Meridian") {
+                    model.shutDown()
+                    NSApplication.shared.terminate(nil)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 12))
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 14)

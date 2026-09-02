@@ -11,6 +11,10 @@ final class AppModel: ObservableObject {
     /// The pin the user is currently pointing at, which may not be applied yet.
     @Published var selection: Place?
 
+    /// The last place actually sent to the phone. Kept when simulation is switched
+    /// off so the toggle has somewhere to return to.
+    @Published private(set) var lastApplied: Place?
+
     @Published var waypoints: [Place] = []
     @Published var routePreview: RouteService.Result?
     @Published var speed: SpeedPreset = .walk
@@ -102,11 +106,31 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// True while the phone is reporting somewhere other than where it is.
+    var isSimulating: Bool { status.mode != .idle }
+
+    /// The toggle can be flipped on whenever there is somewhere to go back to.
+    var canToggle: Bool { isSimulating || lastApplied != nil }
+
     func apply(_ place: Place) {
         selection = place
+        lastApplied = place
         store.recordVisit(place)
         perform("Now at \(place.name)") { [client] in
             try await client.setLocation(latitude: place.latitude, longitude: place.longitude)
+        }
+    }
+
+    /// Switch simulation on or off without forgetting where the phone was.
+    func setSimulating(_ on: Bool) {
+        if on {
+            guard let place = lastApplied else { return }
+            perform("Now at \(place.name)") { [client] in
+                try await client.setLocation(latitude: place.latitude, longitude: place.longitude)
+            }
+        } else {
+            // Deliberately keeps `lastApplied`, which is what the toggle restores.
+            perform("Back to real GPS") { [client] in try await client.clear() }
         }
     }
 
@@ -156,6 +180,7 @@ final class AppModel: ObservableObject {
 
     func playRoute() {
         guard let preview = routePreview, preview.coordinates.count >= 2 else { return }
+        if let first = waypoints.first { lastApplied = first }
         let coordinates = preview.coordinates.map { [$0.latitude, $0.longitude] }
         let speedMps = speed.metresPerSecond
         let loop = loopRoute
