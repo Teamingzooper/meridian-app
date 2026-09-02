@@ -12,6 +12,7 @@ struct SidebarView: View {
     @State private var showBookmarks = true
     @State private var showRecent = true
     @State private var showRoute = true
+    @State private var showSavedRoutes = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -24,6 +25,7 @@ struct SidebarView: View {
                     currentSection
                     bookmarksSection
                     recentSection
+                    savedRoutesSection
                     routeSection
                 }
                 .padding(.bottom, 10)
@@ -147,6 +149,28 @@ struct SidebarView: View {
         }
     }
 
+    // MARK: - Saved routes
+
+    private var savedRoutesSection: some View {
+        let routes = filter.isEmpty
+            ? model.routeStore.routes
+            : model.routeStore.routes.filter { $0.name.localizedCaseInsensitiveContains(filter) }
+
+        return CollapsibleSection(
+            title: "ROUTES", count: model.routeStore.routes.count, isExpanded: $showSavedRoutes
+        ) {
+            if routes.isEmpty {
+                EmptyHint(model.routeStore.routes.isEmpty
+                          ? "Build a route below, then Save to keep it."
+                          : "Nothing matches that filter.")
+            } else {
+                ForEach(routes) { route in
+                    SavedRouteRow(route: route)
+                }
+            }
+        }
+    }
+
     // MARK: - Route
 
     private var routeSection: some View {
@@ -154,7 +178,7 @@ struct SidebarView: View {
             title: "ROUTE", count: model.waypoints.count, isExpanded: $showRoute
         ) {
             if model.waypoints.isEmpty {
-                EmptyHint("Right-click the map and choose Add as Waypoint.")
+                EmptyHint("Right-click the map and choose Add as Waypoint, or import a GPX file below.")
             } else {
                 ForEach(Array(model.waypoints.enumerated()), id: \.element.id) { index, place in
                     WaypointRow(index: index, place: place)

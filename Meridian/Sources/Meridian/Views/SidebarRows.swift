@@ -164,6 +164,9 @@ struct WaypointRow: View {
 struct RouteControls: View {
     @EnvironmentObject private var model: AppModel
 
+    @State private var isNaming = false
+    @State private var draftName = ""
+
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Picker("", selection: $model.speed) {
@@ -217,9 +220,80 @@ struct RouteControls: View {
                         .disabled(model.waypoints.isEmpty)
                 }
             }
+
+            fileControls
         }
         .padding(.horizontal, 12)
         .padding(.top, 6)
+        .popover(isPresented: $isNaming) { nameForm }
+    }
+
+    private var fileControls: some View {
+        HStack(spacing: 4) {
+            smallButton("Save", "square.and.arrow.down") {
+                draftName = suggestedName
+                isNaming = true
+            }
+            .disabled(model.waypoints.isEmpty)
+
+            smallButton("Import", "arrow.down.doc") {
+                if let url = FilePanels.chooseGPX() { model.importGPX(from: url) }
+            }
+
+            smallButton("Export", "arrow.up.doc") {
+                if let url = FilePanels.saveGPX(defaultName: suggestedName) {
+                    model.exportGPX(to: url, named: suggestedName)
+                }
+            }
+            .disabled(model.waypoints.isEmpty)
+
+            Spacer()
+        }
+    }
+
+    private func smallButton(_ title: String, _ symbol: String, action: @escaping () -> Void)
+        -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol).font(.system(size: 10))
+        }
+        .buttonStyle(.borderless)
+        .help(title)
+    }
+
+    /// Name a new route after where it starts, which is usually what it is called.
+    private var suggestedName: String {
+        model.waypoints.first.map { "\($0.name) route" } ?? "Route"
+    }
+
+    private var nameForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Save route").font(.system(size: 12, weight: .semibold))
+            TextField("Name", text: $draftName)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 210)
+                .onSubmit { commitSave() }
+
+            if model.routeStore.contains(name: draftName.trimmingCharacters(in: .whitespaces)) {
+                Label("Replaces the route already saved under this name.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { isNaming = false }
+                Button("Save") { commitSave() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(draftName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(14)
+    }
+
+    private func commitSave() {
+        model.saveCurrentRoute(named: draftName)
+        isNaming = false
     }
 
     private func playback(_ route: DaemonStatus.RouteStatus) -> some View {
@@ -306,5 +380,59 @@ struct SidebarFooter: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
+    }
+}
+
+
+/// A saved route: load it back, or manage it from the context menu.
+struct SavedRouteRow: View {
+    @EnvironmentObject private var model: AppModel
+    let route: SavedRoute
+
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: route.speed.symbol)
+                .font(.system(size: 10))
+                .foregroundStyle(.blue)
+                .frame(width: 14)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(route.name)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+                Text(route.summary)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 4)
+
+            if isHovering {
+                Button { model.load(route) } label: {
+                    Image(systemName: "arrow.up.doc.on.clipboard").font(.system(size: 10))
+                }
+                .buttonStyle(.borderless)
+                .help("Load this route")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .background(isHovering ? Color.secondary.opacity(0.1) : .clear)
+        .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
+        .onTapGesture { model.load(route) }
+        .contextMenu {
+            Button("Load") { model.load(route) }
+            Button("Export as GPX…") {
+                model.load(route)
+                if let url = FilePanels.saveGPX(defaultName: route.name) {
+                    model.exportGPX(to: url, named: route.name)
+                }
+            }
+            Divider()
+            Button("Delete", role: .destructive) { model.routeStore.remove(route) }
+        }
     }
 }

@@ -320,3 +320,61 @@ class TestDeviceErrorMapping:
         call, engine = api
         engine.raises = RuntimeError("boom")
         assert call("/status")[0] == 500
+
+
+class TestGpxEndpoints:
+    """The app posts GPX here rather than parsing it itself, so these carry weight."""
+
+    TRACK = (
+        '<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">'
+        "<trk><name>Ride</name><trkseg>"
+        '<trkpt lat="1.0" lon="2.0"/><trkpt lat="3.0" lon="4.0"/>'
+        "</trkseg></trk></gpx>"
+    )
+
+    def test_parse_returns_points_and_name(self, api):
+        call, _ = api
+        status, body = call("/gpx/parse", {"gpx": self.TRACK})
+        assert status == 200
+        assert body == {"name": "Ride", "coords": [[1.0, 2.0], [3.0, 4.0]], "count": 2}
+
+    def test_parse_rejects_a_missing_document(self, api):
+        call, _ = api
+        assert call("/gpx/parse", {})[0] == 400
+
+    def test_parse_rejects_broken_xml(self, api):
+        call, _ = api
+        status, body = call("/gpx/parse", {"gpx": "<gpx><trk>"})
+        assert status == 400
+        assert "not valid GPX" in body["error"]["message"]
+
+    def test_parse_reports_a_file_with_no_points(self, api):
+        call, _ = api
+        status, body = call("/gpx/parse", {"gpx": '<gpx xmlns="x"></gpx>'})
+        assert status == 400
+        assert "no usable points" in body["error"]["message"]
+
+    def test_write_produces_a_parseable_document(self, api):
+        call, _ = api
+        status, body = call("/gpx/write", {"coords": [[1.0, 2.0], [3.0, 4.0]], "name": "Trip"})
+        assert status == 200
+        assert "<trkpt" in body["gpx"]
+
+        # Feed it straight back in: the round trip is what the app relies on.
+        again_status, again = call("/gpx/parse", {"gpx": body["gpx"]})
+        assert again_status == 200
+        assert again["name"] == "Trip"
+        assert again["coords"] == [[1.0, 2.0], [3.0, 4.0]]
+
+    def test_write_rejects_an_empty_route(self, api):
+        call, _ = api
+        assert call("/gpx/write", {"coords": []})[0] == 400
+
+    def test_write_defaults_the_name(self, api):
+        call, _ = api
+        _, body = call("/gpx/write", {"coords": [[1.0, 2.0], [3.0, 4.0]]})
+        assert "Meridian route" in body["gpx"]
+
+    def test_gpx_endpoints_require_the_token(self, api):
+        call, _ = api
+        assert call("/gpx/parse", {"gpx": self.TRACK}, auth=None)[0] == 401

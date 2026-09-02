@@ -24,6 +24,7 @@ final class AppModel: ObservableObject {
     @Published var banner: Banner?
 
     let store = PlaceStore()
+    let routeStore = RouteStore()
     let search = SearchService()
     let routing = RouteService()
     let location = LocationService()
@@ -208,6 +209,82 @@ final class AppModel: ObservableObject {
 
         perform("Route started") { [client] in
             try await client.playRoute(coordinates: coordinates, speedMps: speedMps, loop: loop)
+        }
+    }
+
+    // MARK: - Saved routes
+
+    /// Store the current waypoints under a name, replacing any route with that name.
+    func saveCurrentRoute(named name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !waypoints.isEmpty else { return }
+
+        routeStore.save(SavedRoute(
+            name: trimmed, waypoints: waypoints, speed: speed, loop: loopRoute
+        ))
+        banner = Banner(kind: .success, message: "Saved “\(trimmed)”")
+    }
+
+    /// Restore a saved route's waypoints and settings, and rebuild its path.
+    func load(_ route: SavedRoute) {
+        waypoints = route.waypoints
+        speed = route.speed
+        loopRoute = route.loop
+        Task { await refreshRoutePreview() }
+    }
+
+    // MARK: - GPX
+
+    func importGPX(from url: URL) {
+        Task { @MainActor in
+            do {
+                // Security-scoped access is required for files chosen via a panel.
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+
+                let document = try String(contentsOf: url, encoding: .utf8)
+                let parsed = try await client.parseGPX(document)
+
+                guard !parsed.coords.isEmpty else {
+                    banner = Banner(kind: .error, message: "That file has no usable points.")
+                    return
+                }
+
+                waypoints = parsed.coords.enumerated().map { index, pair in
+                    Place(
+                        name: "\(parsed.name) \(index + 1)",
+                        coordinate: CLLocationCoordinate2D(latitude: pair[0], longitude: pair[1])
+                    )
+                }
+                await refreshRoutePreview()
+                banner = Banner(
+                    kind: .success,
+                    message: "Imported \(parsed.count) points from “\(parsed.name)”"
+                )
+            } catch let error as DaemonError {
+                banner = Banner(kind: .error, message: error.message)
+            } catch {
+                banner = Banner(kind: .error, message: "Couldn't read that GPX file.")
+            }
+        }
+    }
+
+    func exportGPX(to url: URL, named name: String) {
+        // Prefer the snapped path when there is one: it is what actually plays.
+        let coordinates = (routePreview?.coordinates ?? waypoints.map(\.coordinate))
+            .map { [$0.latitude, $0.longitude] }
+        guard !coordinates.isEmpty else { return }
+
+        Task { @MainActor in
+            do {
+                let document = try await client.writeGPX(coordinates: coordinates, name: name)
+                try document.write(to: url, atomically: true, encoding: .utf8)
+                banner = Banner(kind: .success, message: "Exported to \(url.lastPathComponent)")
+            } catch let error as DaemonError {
+                banner = Banner(kind: .error, message: error.message)
+            } catch {
+                banner = Banner(kind: .error, message: "Couldn't write that file.")
+            }
         }
     }
 

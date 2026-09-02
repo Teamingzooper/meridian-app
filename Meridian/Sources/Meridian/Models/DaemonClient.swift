@@ -40,6 +40,13 @@ actor DaemonClient {
 
     @discardableResult
     func send(_ path: String, body: [String: Any]? = nil) async throws -> DaemonStatus {
+        try await send(path, body: body, as: DaemonStatus.self)
+    }
+
+    /// Endpoints that answer with something other than a status, such as GPX.
+    func send<T: Decodable>(
+        _ path: String, body: [String: Any]? = nil, as type: T.Type
+    ) async throws -> T {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = body == nil && path == "status" ? "GET" : "POST"
         request.setValue("Bearer \(try token())", forHTTPHeaderField: "Authorization")
@@ -68,7 +75,7 @@ actor DaemonClient {
         guard code == 200 else { throw ClientError.badResponse(code) }
 
         do {
-            return try JSONDecoder().decode(DaemonStatus.self, from: data)
+            return try JSONDecoder().decode(T.self, from: data)
         } catch {
             throw ClientError.decoding(error.localizedDescription)
         }
@@ -103,5 +110,30 @@ actor DaemonClient {
             "speedMps": speedMps,
             "loop": loop,
         ])
+    }
+
+    // MARK: - GPX
+    //
+    // Parsed by the sidecar rather than here so there is one GPX implementation,
+    // and it is the one with tests behind it.
+
+    struct ParsedGPX: Decodable {
+        var name: String
+        var coords: [[Double]]
+        var count: Int
+    }
+
+    private struct WrittenGPX: Decodable {
+        var gpx: String
+    }
+
+    func parseGPX(_ document: String) async throws -> ParsedGPX {
+        try await send("gpx/parse", body: ["gpx": document], as: ParsedGPX.self)
+    }
+
+    func writeGPX(coordinates: [[Double]], name: String) async throws -> String {
+        try await send(
+            "gpx/write", body: ["coords": coordinates, "name": name], as: WrittenGPX.self
+        ).gpx
     }
 }

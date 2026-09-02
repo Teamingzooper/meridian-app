@@ -20,6 +20,7 @@ from typing import Any, Callable
 
 from .engine import Engine
 from .errors import DeviceError
+from .gpx import GpxError, parse_gpx, write_gpx
 from .geo import Coord
 from .route import SPEED_PRESETS
 
@@ -153,6 +154,8 @@ class Handler(BaseHTTPRequestHandler):
                 "/stop": lambda _: self.engine.stop(),
                 "/clear": lambda _: self.engine.clear(),
                 "/jitter": self._jitter,
+                "/gpx/parse": self._gpx_parse,
+                "/gpx/write": self._gpx_write,
             }
         )
 
@@ -202,6 +205,32 @@ class Handler(BaseHTTPRequestHandler):
 
     def _jitter(self, payload: dict) -> dict:
         return self.engine.set_jitter(_validate_number(payload.get("radiusM"), 0.0, 100.0, "radiusM"))
+
+    # GPX is parsed here rather than in the app so there is one implementation,
+    # and it is the one with tests behind it.
+    def _gpx_parse(self, payload: dict) -> dict:
+        document = payload.get("gpx")
+        if not isinstance(document, str) or not document.strip():
+            raise ValueError("gpx must be a non-empty string")
+        try:
+            route = parse_gpx(document)
+        except GpxError as exc:
+            raise ValueError(str(exc)) from exc
+        return {
+            "name": route.name,
+            "coords": [[p.lat, p.lon] for p in route.points],
+            "count": len(route.points),
+        }
+
+    def _gpx_write(self, payload: dict) -> dict:
+        coords = parse_coords(payload.get("coords"))
+        name = payload.get("name") or "Meridian route"
+        if not isinstance(name, str):
+            raise ValueError("name must be a string")
+        try:
+            return {"gpx": write_gpx(coords, name[:200])}
+        except GpxError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 def build_server(engine: Engine, token: str, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> ThreadingHTTPServer:
