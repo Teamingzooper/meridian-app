@@ -16,6 +16,13 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Meridian"
 
+# Regenerate the icon if it is missing, so a fresh clone builds a complete app.
+ICON="$ROOT/assets/AppIcon.icns"
+if [ ! -f "$ICON" ] && command -v python3 >/dev/null; then
+  python3 "$ROOT/scripts/make_icon.py" >/dev/null 2>&1 || true
+fi
+[ -f "$ICON" ] && cp "$ICON" "$APP/Contents/Resources/AppIcon.icns"
+
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -29,6 +36,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleShortVersionString</key><string>1.0</string>
     <key>CFBundleVersion</key>           <string>1</string>
     <key>LSMinimumSystemVersion</key>    <string>14.0</string>
+    <key>CFBundleIconFile</key>          <string>AppIcon</string>
     <key>NSHumanReadableCopyright</key>  <string>Meridian. Not affiliated with Apple Inc.</string>
     <!-- Shows your real position in green next to the phone's simulated one in blue. -->
     <key>NSLocationWhenInUseUsageDescription</key>
@@ -47,6 +55,8 @@ codesign --force --deep --sign - "$APP" 2>/dev/null \
 # accessory. Without this, `open` can launch an older registration and the main
 # window silently never appears.
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+# Note: this does not take effect while an old instance is still running.
+# Use scripts/run.sh to rebuild and relaunch in the right order.
 [ -x "$LSREGISTER" ] && "$LSREGISTER" -f "$APP" 2>/dev/null || true
 
 echo "Built $APP"

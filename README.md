@@ -29,6 +29,10 @@ the one Xcode uses. No jailbreak, no subscription, no account, and no root.
 ./scripts/setup.sh
 ```
 
+To rebuild and relaunch after a change, use `./scripts/run.sh` — it stops the
+running instance and refreshes the LaunchServices registration in the right
+order, which plain `open` will not do after an `Info.plist` change.
+
 That creates a Python virtualenv, builds `Meridian.app`, and tells you what to do
 on the phone. Then:
 
@@ -85,7 +89,8 @@ process move your phone's location.
 
 ```bash
 cd meridiand && .venv/bin/python -m pytest tests/ -q   # 148 tests
-./scripts/build.sh                                     # rebuild Meridian.app
+./scripts/run.sh                                       # rebuild and relaunch
+python3 scripts/make_icon.py                           # regenerate the app icon
 ```
 
 State lives in `~/Library/Application Support/Meridian/` as plain JSON. Helper
@@ -97,6 +102,10 @@ This is a developer and QA tool: it simulates location on your own device over
 USB, the way Xcode does. It deliberately implements no detection evasion for apps
 that treat location as a compliance control — betting, banking, geo-licensed
 streaming. Those generally consider spoofing them fraud.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
 
 Built on [pymobiledevice3](https://github.com/doronz88/pymobiledevice3).
 Not affiliated with Apple Inc. or with GhostMe.
