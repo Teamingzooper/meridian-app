@@ -11,6 +11,11 @@ struct MapPane: View {
     @State private var pendingPin: Place?
     /// Cursor position in map-local coordinates, captured for the context menu.
     @State private var hoverPoint: CGPoint?
+    /// Latest camera reported by the map, needed to zoom around what's on screen.
+    @State private var mapCamera: MapCamera?
+    /// Camera state captured when a pinch begins, so the whole gesture scales from
+    /// one baseline instead of compounding each incremental update.
+    @State private var pinchAnchor: (center: CLLocationCoordinate2D, distance: Double)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -104,7 +109,9 @@ struct MapPane: View {
 
     private var map: some View {
         MapReader { proxy in
-            Map(position: $camera) {
+            // Pan and rotate stay native; zoom is ours. Leaving the built-in zoom on
+            // as well would apply both to every pinch and scale far too fast.
+            Map(position: $camera, interactionModes: [.pan, .rotate]) {
                 // Green: where you actually are.
                 if let real = model.location.coordinate {
                     Annotation("You are here", coordinate: real) {
@@ -142,9 +149,16 @@ struct MapPane: View {
                 Button("Set Location Here…") { placePin(using: proxy) }
                 Button("Add as Waypoint") { addWaypoint(using: proxy) }
             }
-            .onMapCameraChange { context in
+            .onMapCameraChange(frequency: .continuous) { context in
                 visibleRegion = context.region
+                mapCamera = context.camera
             }
+            .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { zoom(by: $0.magnification, ending: false) }
+                    .onEnded { zoom(by: $0.magnification, ending: true) }
+            )
+            .overlay(alignment: .topTrailing) { zoomControls }
             .overlay(alignment: .bottom) {
                 if let pending = pendingPin {
                     confirmBar(for: pending)
@@ -154,6 +168,61 @@ struct MapPane: View {
             }
             .animation(.easeInOut(duration: 0.16), value: pendingPin)
         }
+    }
+
+    // MARK: - Zoom
+
+    /// How close the camera may get, and how far it may pull back.
+    private static let zoomRange: ClosedRange<Double> = 120...20_000_000
+
+    /// Scale the camera distance by a pinch factor, anchored to where the pinch began.
+    private func zoom(by magnification: CGFloat, ending: Bool) {
+        guard let anchor = pinchAnchor ?? mapCamera.map({ ($0.centerCoordinate, $0.distance) }) else {
+            return
+        }
+        if pinchAnchor == nil { pinchAnchor = anchor }
+
+        // Pinching apart magnifies, which means bringing the camera closer.
+        let distance = (anchor.distance / max(0.05, Double(magnification)))
+            .clamped(to: Self.zoomRange)
+
+        camera = .camera(MapCamera(
+            centerCoordinate: anchor.center,
+            distance: distance,
+            heading: mapCamera?.heading ?? 0,
+            pitch: mapCamera?.pitch ?? 0
+        ))
+
+        if ending { pinchAnchor = nil }
+    }
+
+    /// Step zoom for the on-screen buttons, which work without a trackpad.
+    private func stepZoom(_ factor: Double) {
+        guard let current = mapCamera else { return }
+        camera = .camera(MapCamera(
+            centerCoordinate: current.centerCoordinate,
+            distance: (current.distance * factor).clamped(to: Self.zoomRange),
+            heading: current.heading,
+            pitch: current.pitch
+        ))
+    }
+
+    private var zoomControls: some View {
+        VStack(spacing: 0) {
+            Button { stepZoom(0.5) } label: {
+                Image(systemName: "plus").frame(width: 22, height: 20)
+            }
+            Divider().frame(width: 22)
+            Button { stepZoom(2.0) } label: {
+                Image(systemName: "minus").frame(width: 22, height: 20)
+            }
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 10, weight: .semibold))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+        .shadow(radius: 2, y: 1)
+        .padding(8)
     }
 
     /// True when the selected pin is the place the phone is already reporting.
