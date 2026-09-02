@@ -14,11 +14,27 @@ struct DaemonStatus: Decodable, Equatable {
         case idle, fixed, route
     }
 
-    struct Device: Decodable, Equatable {
+    struct Device: Decodable, Equatable, Identifiable {
         var udid: String
         var name: String
         var iosVersion: String
         var transport: String
+        var kind: String
+
+        var id: String { udid }
+        var isSimulator: Bool { kind == "simulator" }
+
+        /// Simulators and phones deserve visibly different icons in a picker.
+        var symbol: String { isSimulator ? "laptopcomputer" : "iphone.gen3" }
+
+        var subtitle: String {
+            let label = isSimulator ? "Simulator" : "iOS"
+            return iosVersion.isEmpty ? label : "\(label) \(iosVersion)"
+        }
+    }
+
+    struct DeviceList: Decodable {
+        var devices: [Device]
     }
 
     struct Location: Decodable, Equatable {

@@ -8,6 +8,9 @@ final class AppModel: ObservableObject {
     @Published var status: DaemonStatus = .unknown
     @Published var helperReachable = false
 
+    /// Attached phones and booted simulators, refreshed on a slow cadence.
+    @Published private(set) var availableDevices: [DaemonStatus.Device] = []
+
     /// The pin the user is currently pointing at, which may not be applied yet.
     @Published var selection: Place?
 
@@ -54,6 +57,19 @@ final class AppModel: ObservableObject {
         launcher.terminate()
     }
 
+    /// Enumerating devices is far heavier than a status poll, so it runs rarely.
+    func refreshDevices() async {
+        if let found = try? await client.devices() {
+            availableDevices = found
+        }
+    }
+
+    func select(_ device: DaemonStatus.Device) {
+        perform("Switched to \(device.name)") { [client] in
+            try await client.select(udid: device.udid, kind: device.kind)
+        }
+    }
+
     /// Where the phone is currently pretending to be, if anywhere.
     var simulatedCoordinate: CLLocationCoordinate2D? {
         guard status.mode != .idle, let point = status.location else { return nil }
@@ -63,6 +79,7 @@ final class AppModel: ObservableObject {
     /// Poll status so the UI reflects reality even when changed from elsewhere.
     private func pollForever() async {
         var launchAttempted = false
+        var deviceTick = 0
 
         while !Task.isCancelled {
             let alive = await client.isAlive()
@@ -96,6 +113,13 @@ final class AppModel: ObservableObject {
                     message: launcher.recentLog(lines: 3)
                         ?? "The helper stopped unexpectedly. See ~/Library/Logs/Meridian-helper.log"
                 )
+            }
+
+            // Device enumeration touches usbmux and simctl, so it runs every
+            // eighth pass rather than on every one.
+            if alive {
+                deviceTick += 1
+                if deviceTick % 8 == 1 { await refreshDevices() }
             }
 
             // Fast enough to feel live during playback, idle enough to be free.

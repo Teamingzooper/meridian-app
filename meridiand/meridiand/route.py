@@ -8,9 +8,11 @@ server supplies real time; tests supply whatever they like.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
+from functools import cached_property
+from typing import Optional, Sequence
 
 from .geo import Coord, point_at_distance, total_distance
+from .motion import MotionProfile
 
 # Metres per second. Rough real-world averages including the stops that make
 # movement look human rather than like a constant-velocity dot.
@@ -26,6 +28,9 @@ class RoutePlayer:
     coords: Sequence[Coord]
     speed_mps: float
     loop: bool = False
+    #: Ease away from stops, slow into corners and vary the pace slightly.
+    #: Off by default so the plain constant-speed model stays available.
+    realistic: bool = False
 
     def __post_init__(self) -> None:
         if not self.coords:
@@ -33,12 +38,21 @@ class RoutePlayer:
         if self.speed_mps <= 0:
             raise ValueError("speed_mps must be positive")
 
+    @cached_property
+    def profile(self) -> Optional[MotionProfile]:
+        """The motion profile, built once per player. None in constant-speed mode."""
+        if not self.realistic or len(self.coords) < 2:
+            return None
+        return MotionProfile(self.coords, self.speed_mps)
+
     @property
     def length_m(self) -> float:
         return total_distance(self.coords)
 
     @property
     def duration_s(self) -> float:
+        if (profile := self.profile) is not None:
+            return profile.duration_s
         return self.length_m / self.speed_mps
 
     def _elapsed_to_distance(self, elapsed_s: float) -> float:
@@ -47,9 +61,15 @@ class RoutePlayer:
             return 0.0
 
         length = self.length_m
-        travelled = elapsed_s * self.speed_mps
 
-        # A degenerate route has nowhere to wrap to, so looping is a no-op.
+        # Looping restarts the profile each lap, so the easing repeats too.
+        if self.loop and length > 0 and self.duration_s > 0:
+            elapsed_s = elapsed_s % self.duration_s
+
+        if (profile := self.profile) is not None:
+            return profile.distance_at(elapsed_s)
+
+        travelled = elapsed_s * self.speed_mps
         if self.loop and length > 0:
             return travelled % length
         return travelled

@@ -88,6 +88,14 @@ actor DaemonClient {
     // MARK: - Commands
 
     func status() async throws -> DaemonStatus { try await send("status") }
+
+    func devices() async throws -> [DaemonStatus.Device] {
+        try await send("devices", as: DaemonStatus.DeviceList.self).devices
+    }
+
+    func select(udid: String, kind: String) async throws -> DaemonStatus {
+        try await send("select", body: ["udid": udid, "kind": kind])
+    }
     func connect() async throws -> DaemonStatus { try await send("connect", body: [:]) }
     func clear() async throws -> DaemonStatus { try await send("clear", body: [:]) }
     func pause() async throws -> DaemonStatus { try await send("pause", body: [:]) }

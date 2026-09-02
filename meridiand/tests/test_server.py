@@ -136,8 +136,10 @@ class FakeEngine:
     def set_fixed(self, lat, lon):
         return self._record("fixed", lat=lat, lon=lon)
 
-    def play_route(self, coords, speed_mps, loop):
-        return self._record("route", coords=list(coords), speed_mps=speed_mps, loop=loop)
+    def play_route(self, coords, speed_mps, loop, realistic=True):
+        return self._record(
+            "route", coords=list(coords), speed_mps=speed_mps, loop=loop, realistic=realistic
+        )
 
     def pause(self):
         return self._record("pause")
@@ -153,6 +155,12 @@ class FakeEngine:
 
     def set_jitter(self, radius_m):
         return self._record("jitter", radius_m=radius_m)
+
+    def list_devices(self):
+        return self._record("devices")
+
+    def select_device(self, udid, kind="device"):
+        return self._record("select", udid=udid, kind=kind)
 
 
 @pytest.fixture
@@ -262,6 +270,13 @@ class TestEndpoints:
         assert kwargs["speed_mps"] == SPEED_PRESETS["bike"]
         assert kwargs["loop"] is True
         assert kwargs["coords"] == [Coord(0.0, 0.0), Coord(0.0, 1.0)]
+        # Lifelike movement is the default; the caller did not ask for it.
+        assert kwargs["realistic"] is True
+
+    def test_realistic_can_be_switched_off(self, api):
+        call, engine = api
+        call("/route", {"coords": [[0.0, 0.0], [0.0, 1.0]], "realistic": False})
+        assert engine.calls[0][1]["realistic"] is False
 
     def test_route_rejects_a_bad_polyline(self, api):
         call, _ = api
@@ -378,3 +393,38 @@ class TestGpxEndpoints:
     def test_gpx_endpoints_require_the_token(self, api):
         call, _ = api
         assert call("/gpx/parse", {"gpx": self.TRACK}, auth=None)[0] == 401
+
+
+class TestDeviceSelection:
+    def test_devices_endpoint(self, api):
+        call, engine = api
+        assert call("/devices")[0] == 200
+        assert engine.calls[0][0] == "devices"
+
+    def test_devices_requires_the_token(self, api):
+        call, _ = api
+        assert call("/devices", auth=None)[0] == 401
+
+    def test_select_passes_udid_and_kind(self, api):
+        call, engine = api
+        assert call("/select", {"udid": "ABC", "kind": "simulator"})[0] == 200
+        assert engine.calls[0] == ("select", {"udid": "ABC", "kind": "simulator"})
+
+    def test_select_defaults_to_a_physical_device(self, api):
+        call, engine = api
+        call("/select", {"udid": "ABC"})
+        assert engine.calls[0][1]["kind"] == "device"
+
+    def test_select_with_no_udid_means_whatever_is_attached(self, api):
+        call, engine = api
+        call("/select", {})
+        assert engine.calls[0][1]["udid"] is None
+
+    def test_select_rejects_a_non_string_udid(self, api):
+        call, engine = api
+        assert call("/select", {"udid": 42})[0] == 400
+        assert engine.calls == []
+
+    def test_select_rejects_a_non_string_kind(self, api):
+        call, _ = api
+        assert call("/select", {"udid": "A", "kind": 7})[0] == 400

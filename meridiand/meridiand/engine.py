@@ -17,11 +17,18 @@ import threading
 import time
 from typing import Any, Optional, Sequence
 
-from .device import DEFAULT_TUNNELD_ADDRESS, LocationSession
+from .device import (
+    DEFAULT_TUNNELD_ADDRESS,
+    KIND_DEVICE,
+    KIND_SIMULATOR,
+    LocationSession,
+    list_physical_devices,
+)
 from .errors import DeviceError, classify
 from .geo import Coord, jitter, total_distance
 from .playback import Playback
 from .route import RoutePlayer
+from .simulator import SimulatorSession, list_simulators
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +55,10 @@ class Engine:
         if tick_hz <= 0:
             raise ValueError("tick_hz must be positive")
 
-        self._session = LocationSession(tunneld_address)
+        self._tunneld_address = tunneld_address
+        self._session: Any = LocationSession(tunneld_address)
+        #: (udid, kind) the user picked, or None to take whatever is attached.
+        self._selected: Optional[tuple[str, str]] = None
         self._tick_interval = 1.0 / tick_hz
         self._jitter_m = jitter_m
 
@@ -140,7 +150,7 @@ class Engine:
             return
 
         if not self._session.is_open:
-            await self._session.open()
+            await self._open_session()
 
         await self._session.set_location(coord)
         self._last_pushed = coord
@@ -165,9 +175,64 @@ class Engine:
 
     # ------------------------------------------------------------- sync commands
 
+    def list_devices(self) -> dict:
+        """Everything Meridian could drive: attached hardware and booted simulators."""
+        physical, simulators = self._submit(self._gather_devices())
+        return {
+            "devices": [d.as_dict() for d in physical + simulators],
+            "selected": (
+                {"udid": self._selected[0], "kind": self._selected[1]}
+                if self._selected else None
+            ),
+        }
+
+    async def _gather_devices(self) -> tuple[list, list]:
+        # Both listings are independent, so run them together rather than in turn.
+        physical, simulators = await asyncio.gather(
+            list_physical_devices(), list_simulators(), return_exceptions=True
+        )
+        return (
+            physical if isinstance(physical, list) else [],
+            simulators if isinstance(simulators, list) else [],
+        )
+
+    def select_device(self, udid: Optional[str], kind: str = KIND_DEVICE) -> dict:
+        """Choose which device to drive, swapping backend if the kind changed."""
+        if kind not in (KIND_DEVICE, KIND_SIMULATOR):
+            raise ValueError(f"unknown device kind '{kind}'")
+
+        self._submit(self._apply_selection(udid, kind))
+        return self.status()
+
+    async def _apply_selection(self, udid: Optional[str], kind: str) -> None:
+        await self._session.close()
+
+        # A simulator speaks simctl and a phone speaks DVT, so the backend swaps.
+        wanted_simulator = kind == KIND_SIMULATOR
+        have_simulator = isinstance(self._session, SimulatorSession)
+        if wanted_simulator != have_simulator:
+            self._session = (
+                SimulatorSession() if wanted_simulator
+                else LocationSession(self._tunneld_address)
+            )
+
+        self._selected = (udid, kind) if udid else None
+        self._mode = MODE_IDLE
+        self._target = None
+        self._playback = None
+        self._last_pushed = None
+        self._last_error = None
+
+        await self._open_session()
+
+    async def _open_session(self) -> None:
+        """Open the current backend against the selected device."""
+        udid = self._selected[0] if self._selected else None
+        await self._session.open(udid)
+
     def connect(self) -> dict:
         """Open the device channel eagerly so the UI can report device details."""
-        self._submit(self._session.open())
+        self._submit(self._open_session())
         self._last_error = None
         return self.status()
 
@@ -179,7 +244,7 @@ class Engine:
 
     async def _apply_fixed(self, coord: Coord) -> None:
         if not self._session.is_open:
-            await self._session.open()
+            await self._open_session()
         self._mode = MODE_FIXED
         self._target = coord
         self._playback = None
@@ -190,15 +255,20 @@ class Engine:
         self._last_pushed = coord
         self._last_error = None
 
-    def play_route(self, coords: Sequence[Coord], speed_mps: float, loop: bool = False) -> dict:
+    def play_route(
+        self, coords: Sequence[Coord], speed_mps: float, loop: bool = False,
+        realistic: bool = True,
+    ) -> dict:
         """Start walking the device along a polyline."""
-        player = RoutePlayer(list(coords), speed_mps=speed_mps, loop=loop)
+        player = RoutePlayer(
+            list(coords), speed_mps=speed_mps, loop=loop, realistic=realistic
+        )
         self._submit(self._apply_route(player))
         return self.status()
 
     async def _apply_route(self, player: RoutePlayer) -> None:
         if not self._session.is_open:
-            await self._session.open()
+            await self._open_session()
         self._mode = MODE_ROUTE
         self._playback = Playback(player, now=time.monotonic())
         self._target = None

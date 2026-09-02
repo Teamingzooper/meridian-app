@@ -9,6 +9,12 @@ let package = Package(
             name: "Meridian",
             path: "Sources/Meridian",
             swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "MeridianTests",
+            dependencies: ["Meridian"],
+            path: "Tests/MeridianTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
 )

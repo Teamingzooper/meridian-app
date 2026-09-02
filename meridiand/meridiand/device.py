@@ -33,6 +33,10 @@ DEFAULT_TUNNELD_ADDRESS = ("127.0.0.1", 49151)
 
 TRANSPORT_NATIVE = "native"
 TRANSPORT_TUNNELD = "tunneld"
+TRANSPORT_SIMCTL = "simctl"
+
+KIND_DEVICE = "device"
+KIND_SIMULATOR = "simulator"
 
 
 @dataclass(frozen=True)
@@ -41,6 +45,11 @@ class DeviceInfo:
     name: str
     ios_version: str
     transport: str = TRANSPORT_NATIVE
+    kind: str = KIND_DEVICE
+
+    @property
+    def is_simulator(self) -> bool:
+        return self.kind == KIND_SIMULATOR
 
     def as_dict(self) -> dict:
         return {
@@ -48,6 +57,7 @@ class DeviceInfo:
             "name": self.name,
             "iosVersion": self.ios_version,
             "transport": self.transport,
+            "kind": self.kind,
         }
 
 
@@ -87,6 +97,40 @@ async def _lookup_device_name(udid: str) -> str:
     except Exception:
         logger.debug("could not read DeviceName from lockdown", exc_info=True)
         return ""
+
+
+async def list_physical_devices() -> list[DeviceInfo]:
+    """Attached iPhones and iPads, named via lockdown.
+
+    Deliberately avoids opening a tunnel: listing runs on every status poll, and
+    a tunnel per device would be far too expensive for that.
+    """
+    from pymobiledevice3.lockdown import create_using_usbmux
+    from pymobiledevice3.usbmux import list_devices as usbmux_list
+
+    try:
+        muxed = await asyncio.wait_for(usbmux_list(), timeout=10)
+    except Exception:
+        logger.debug("usbmux listing failed", exc_info=True)
+        return []
+
+    found: list[DeviceInfo] = []
+    for mux_device in muxed:
+        serial = getattr(mux_device, "serial", "") or ""
+        if not serial or any(d.udid == serial for d in found):
+            continue
+
+        name, version = serial, ""
+        try:
+            lockdown = await asyncio.wait_for(create_using_usbmux(serial=serial), timeout=10)
+            name = (await lockdown.get_value(key="DeviceName") or serial).strip() or serial
+            version = (await lockdown.get_value(key="ProductVersion") or "").strip()
+        except Exception:
+            logger.debug("could not describe %s", serial, exc_info=True)
+
+        found.append(DeviceInfo(udid=serial, name=name, ios_version=version))
+
+    return found
 
 
 class LocationSession:

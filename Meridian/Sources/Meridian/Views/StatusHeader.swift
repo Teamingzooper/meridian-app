@@ -11,9 +11,13 @@ struct StatusHeader: View {
                     .fill(indicatorColor)
                     .frame(width: 8, height: 8)
 
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
+                if model.availableDevices.count > 1 {
+                    devicePicker
+                } else {
+                    Text(title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                }
 
                 Spacer()
 
@@ -56,6 +60,36 @@ struct StatusHeader: View {
         .background(.quaternary.opacity(0.4))
     }
 
+    /// Shown only when there is an actual choice to make.
+    private var devicePicker: some View {
+        Menu {
+            ForEach(model.availableDevices) { device in
+                Button {
+                    model.select(device)
+                } label: {
+                    Label(
+                        "\(device.name) — \(device.subtitle)",
+                        systemImage: device.udid == model.status.device?.udid
+                            ? "checkmark" : device.symbol
+                    )
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Choose which device to drive")
+    }
+
     private var indicatorColor: Color {
         guard model.helperReachable else { return .secondary }
         if model.status.error != nil { return .orange }
@@ -84,7 +118,9 @@ struct StatusHeader: View {
             if let last = model.lastApplied {
                 return "Real GPS · switch on for \(last.name)"
             }
-            return "iOS \(device.iosVersion) · real GPS"
+            return device.isSimulator
+                ? "\(device.subtitle) · no simulated location"
+                : "iOS \(device.iosVersion) · real GPS"
         case .fixed:
             guard let location = model.status.location else { return "Simulating a location" }
             return String(format: "Simulating %.5f, %.5f", location.lat, location.lon)

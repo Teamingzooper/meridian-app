@@ -23,7 +23,7 @@ struct MapPane: View {
 
             ZStack(alignment: .top) {
                 map
-                if !model.search.results.isEmpty {
+                if pastedCoordinate != nil || !model.search.results.isEmpty {
                     resultsList
                 }
             }
@@ -63,9 +63,40 @@ struct MapPane: View {
         .padding(.vertical, 8)
     }
 
+    /// A coordinate or map link typed into the search box, if that is what it is.
+    private var pastedCoordinate: CLLocationCoordinate2D? {
+        CoordinateParser.parse(query)
+    }
+
     private var resultsList: some View {
         ScrollView {
             VStack(spacing: 0) {
+                if let coordinate = pastedCoordinate {
+                    Button {
+                        choose(Place(name: "Pasted location", coordinate: coordinate))
+                    } label: {
+                        HStack(spacing: 7) {
+                            Image(systemName: "scope")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.blue)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Go to these coordinates")
+                                    .font(.system(size: 12, weight: .medium))
+                                Text(String(format: "%.5f, %.5f",
+                                            coordinate.latitude, coordinate.longitude))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Divider()
+                }
+
                 ForEach(model.search.results, id: \.self) { item in
                     Button {
                         choose(item)
@@ -94,7 +125,10 @@ struct MapPane: View {
     }
 
     private func choose(_ item: MKMapItem) {
-        let place = Place(name: item.displayName, coordinate: item.placemark.coordinate)
+        choose(Place(name: item.displayName, coordinate: item.placemark.coordinate))
+    }
+
+    private func choose(_ place: Place) {
         model.selection = place
         pendingPin = nil
         camera = .region(MKCoordinateRegion(

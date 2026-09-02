@@ -131,3 +131,39 @@ class TestSpeedPresets:
 
     def test_walking_pace_is_plausible(self):
         assert 1.0 <= SPEED_PRESETS["walk"] <= 2.0
+
+
+class TestRealisticMode:
+    """Easing is opt-in on the player and on by default at the API."""
+
+    def test_off_by_default(self):
+        assert RoutePlayer(LINE, speed_mps=10.0).profile is None
+
+    def test_builds_a_profile_when_asked(self):
+        assert RoutePlayer(LINE, speed_mps=10.0, realistic=True).profile is not None
+
+    def test_takes_longer_than_constant_speed(self):
+        plain = RoutePlayer(LINE, speed_mps=10.0)
+        eased = RoutePlayer(LINE, speed_mps=10.0, realistic=True)
+        assert eased.duration_s > plain.duration_s
+
+    def test_still_starts_and_ends_in_the_right_places(self):
+        player = RoutePlayer(LINE, speed_mps=10.0, realistic=True)
+        assert player.position_at(0.0) == LINE[0]
+        assert player.position_at(player.duration_s).lon == pytest.approx(1.0, abs=1e-6)
+
+    def test_still_advances_monotonically(self):
+        player = RoutePlayer(LINE, speed_mps=10.0, realistic=True)
+        lons = [player.position_at(player.duration_s * i / 40).lon for i in range(41)]
+        assert lons == sorted(lons)
+
+    def test_a_single_point_route_needs_no_profile(self):
+        assert RoutePlayer([Coord(1.0, 2.0)], speed_mps=1.4, realistic=True).profile is None
+
+    def test_looping_wraps_on_the_eased_duration(self):
+        player = RoutePlayer(LINE, speed_mps=10.0, loop=True, realistic=True)
+        assert player.position_at(player.duration_s).lon == pytest.approx(0.0, abs=1e-4)
+
+    def test_the_profile_is_built_once(self):
+        player = RoutePlayer(LINE, speed_mps=10.0, realistic=True)
+        assert player.profile is player.profile

@@ -141,12 +141,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             self._send(HTTPStatus.OK, {"ok": True, "service": "meridiand"})
             return
-        self._dispatch({"/status": lambda _: self.engine.status()})
+        self._dispatch({
+            "/status": lambda _: self.engine.status(),
+            "/devices": lambda _: self.engine.list_devices(),
+        })
 
     def do_POST(self) -> None:  # noqa: N802
         self._dispatch(
             {
                 "/connect": lambda _: self.engine.connect(),
+                "/select": self._select,
                 "/location": self._location,
                 "/route": self._route,
                 "/pause": lambda _: self.engine.pause(),
@@ -201,7 +205,18 @@ class Handler(BaseHTTPRequestHandler):
             parse_coords(payload.get("coords")),
             speed_mps=resolve_speed(payload),
             loop=bool(payload.get("loop", False)),
+            # Lifelike by default; callers wanting a metronome can opt out.
+            realistic=bool(payload.get("realistic", True)),
         )
+
+    def _select(self, payload: dict) -> dict:
+        udid = payload.get("udid")
+        if udid is not None and not isinstance(udid, str):
+            raise ValueError("udid must be a string")
+        kind = payload.get("kind", "device")
+        if not isinstance(kind, str):
+            raise ValueError("kind must be a string")
+        return self.engine.select_device(udid or None, kind)
 
     def _jitter(self, payload: dict) -> dict:
         return self.engine.set_jitter(_validate_number(payload.get("radiusM"), 0.0, 100.0, "radiusM"))
