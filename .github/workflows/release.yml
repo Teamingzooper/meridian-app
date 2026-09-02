@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label for a manual build"
+        required: false
+        default: "dev"
+
+permissions:
+  contents: write
+
+jobs:
+  dmg:
+    name: Build and publish the disk image
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # so `git describe` can name the build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run the sidecar tests first
+        run: |
+          pip install -e ./meridiand pytest
+          python -m pytest meridiand/tests -q
+
+      - name: Package
+        run: ./scripts/package.sh "${{ steps.version.outputs.value }}"
+
+      - name: Name the artifact after the version
+        run: mv build/Meridian.dmg "build/Meridian-${{ steps.version.outputs.value }}.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Meridian-${{ steps.version.outputs.value }}
+          path: build/Meridian-*.dmg
+          retention-days: 30
+
+      - name: Publish the release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Meridian-*.dmg
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            1. Download the `.dmg` below and drag **Meridian** to Applications.
+            2. The first time you open it, **right-click the app and choose Open**,
+               then confirm. Meridian is signed ad-hoc rather than notarised, so
+               Gatekeeper warns on a plain double-click. This is a one-time step.
+            3. On your iPhone, turn on **Settings › Privacy & Security › Developer
+               Mode** and restart it. Connect over USB and tap **Trust**.
+
+            No Python, no virtualenv, and no root — the sidecar ships inside the app.
+
+            If something does not work, run the built-in check:
+
+            ```
+            /Applications/Meridian.app/Contents/Resources/meridiand/meridiand doctor
+            ```

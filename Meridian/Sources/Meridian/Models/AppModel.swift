@@ -160,6 +160,35 @@ final class AppModel: ObservableObject {
         perform("Back to real GPS") { [client] in try await client.clear() }
     }
 
+    // MARK: - Hide
+
+    /// True when the phone is sitting on the decoy.
+    var isHidden: Bool {
+        guard let hide = store.hidePlace, let simulated = simulatedCoordinate else { return false }
+        return hide.isEffectivelySame(as: simulated)
+    }
+
+    /// Jump to the decoy with drift on.
+    ///
+    /// This does not stop the phone reporting a location — the DVT channel can
+    /// only override the fix, never suppress it. Apps see the decoy instead of
+    /// where you are, which is as far as this mechanism reaches.
+    func hide() {
+        guard let place = store.hidePlace else {
+            banner = Banner(
+                kind: .notice,
+                message: "Pick a decoy first: right-click a saved place and choose Use as Hide Location."
+            )
+            return
+        }
+
+        if !jitterEnabled {
+            jitterEnabled = true
+            perform { [client] in try await client.setJitter(radiusMetres: 4.0) }
+        }
+        apply(place)
+    }
+
     func toggleJitter() {
         jitterEnabled.toggle()
         let radius = jitterEnabled ? 4.0 : 0.0

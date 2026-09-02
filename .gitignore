@@ -7,6 +7,8 @@ venv/
 build/
 .build/
 dist/
+dist_pyi/
+build_pyi/
 .DS_Store
 DerivedData/
 *.xcuserstate

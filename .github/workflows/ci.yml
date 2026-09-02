@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sidecar:
+    name: Sidecar tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./meridiand pytest
+
+      - name: Test
+        run: python -m pytest meridiand/tests -q
+
+  app:
+    name: Build app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Build
+        run: swift build --package-path Meridian -c release
+
+      - name: Assemble the bundle
+        run: ./scripts/build.sh release
+
+      - name: Check the bundle is well formed
+        run: |
+          APP=build/Meridian.app
+          test -x "$APP/Contents/MacOS/Meridian" || { echo "no executable"; exit 1; }
+          test -f "$APP/Contents/Info.plist"     || { echo "no Info.plist"; exit 1; }
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist"
+
+  lint:
+    name: Sidecar sanity
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Byte-compile every module
+        run: python -m compileall -q meridiand/meridiand
+
+      - name: Confirm the CLI is wired up
+        run: |
+          pip install -e ./meridiand
+          meridian --help
+          meridiand --help

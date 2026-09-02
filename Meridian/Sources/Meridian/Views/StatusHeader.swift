@@ -17,6 +17,17 @@ struct StatusHeader: View {
 
                 Spacer()
 
+                Button(action: model.hide) {
+                    Image(systemName: model.isHidden ? "eye.slash.fill" : "eye.slash")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(model.isHidden ? Color.accentColor : .secondary)
+                .help(model.store.hidePlace.map {
+                    "Jump to your decoy, \($0.name). Apps see the decoy instead of where you are — "
+                    + "this does not switch Location Services off."
+                } ?? "Set a decoy first: right-click a saved place and choose Use as Hide Location.")
+
                 Text(model.isSimulating ? "On" : "Off")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(model.isSimulating ? .primary : .secondary)

@@ -11,12 +11,17 @@ final class PlaceStore: ObservableObject {
     @Published private(set) var bookmarks: [Place] = []
     @Published private(set) var history: [Place] = []
 
+    /// The decoy the Hide button jumps to. Nil until the user picks one — there
+    /// is no sensible default, since a good decoy depends on where you are not.
+    @Published private(set) var hidePlace: Place?
+
     /// Enough history to be useful, short enough to stay scannable.
     private let historyLimit = 40
 
     private let directory: URL
     private var bookmarksURL: URL { directory.appending(path: "bookmarks.json") }
     private var historyURL: URL { directory.appending(path: "history.json") }
+    private var hideURL: URL { directory.appending(path: "hide-location.json") }
 
     init(directory: URL? = nil) {
         self.directory = directory ?? FileManager.default
@@ -25,6 +30,19 @@ final class PlaceStore: ObservableObject {
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
         bookmarks = load(bookmarksURL)
         history = load(historyURL)
+        hidePlace = load(hideURL).first
+    }
+
+    // MARK: - Hide location
+
+    func setHidePlace(_ place: Place?) {
+        hidePlace = place
+        save(place.map { [$0] } ?? [], to: hideURL)
+    }
+
+    func isHidePlace(_ place: Place) -> Bool {
+        guard let hidePlace else { return false }
+        return hidePlace.isEffectivelySamePlace(as: place)
     }
 
     // MARK: - Bookmarks

@@ -29,8 +29,21 @@ final class HelperLauncher {
 
     var isLaunched: Bool { process?.isRunning == true }
 
-    /// Resolve the helper command, preferring what setup recorded.
+    /// A sidecar shipped inside the app bundle, as release builds do.
+    private var bundledHelper: String? {
+        guard let resources = Bundle.main.resourceURL else { return nil }
+        let candidate = resources.appending(path: "meridiand/meridiand").path
+        return FileManager.default.isExecutableFile(atPath: candidate) ? candidate : nil
+    }
+
+    /// Resolve the helper command.
+    ///
+    /// A release build carries its own sidecar, so it is tried first and needs no
+    /// Python on the machine. Falling back to what `setup.sh` recorded keeps a
+    /// source checkout working against its virtualenv.
     private func resolveCommand() -> [String]? {
+        if let bundled = bundledHelper { return [bundled] }
+
         if let raw = try? String(contentsOf: commandFileURL, encoding: .utf8) {
             let parts = raw.split(separator: "\n")
                 .map { $0.trimmingCharacters(in: .whitespaces) }

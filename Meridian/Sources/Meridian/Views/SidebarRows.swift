@@ -23,9 +23,17 @@ struct PlaceRow: View {
                 .frame(width: 6, height: 6)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(place.name)
-                    .font(.system(size: 12, weight: isCurrent ? .medium : .regular))
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(place.name)
+                        .font(.system(size: 12, weight: isCurrent ? .medium : .regular))
+                        .lineLimit(1)
+                    if model.store.isHidePlace(place) {
+                        Image(systemName: "eye.slash.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                            .help("Your decoy location")
+                    }
+                }
                 Text(place.prettyCoordinates)
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.secondary)
@@ -79,6 +87,12 @@ struct PlaceRow: View {
     private var menu: some View {
         Button("Set Location") { model.apply(place) }
         Button("Add as Waypoint") { model.addWaypoint(place) }
+        Divider()
+        if model.store.isHidePlace(place) {
+            Button("Stop Using as Hide Location") { model.store.setHidePlace(nil) }
+        } else {
+            Button("Use as Hide Location") { model.store.setHidePlace(place) }
+        }
         Divider()
         if isBookmark {
             Button("Rename…") {
