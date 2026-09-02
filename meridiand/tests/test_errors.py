@@ -91,3 +91,15 @@ class TestConstructors:
 
     def test_engine_down(self):
         assert engine_down().code == "engine_down"
+
+
+class TestNoDeviceGuidance:
+    """An unplugged phone must not be reported as a tunnel or engine fault."""
+
+    def test_message_names_the_cable_not_the_tunnel(self):
+        message = no_device().message
+        assert "USB" in message or "cable" in message
+        assert "tunnel" not in message.lower()
+
+    def test_it_is_recoverable(self):
+        assert no_device().recoverable

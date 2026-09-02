@@ -132,8 +132,21 @@ class LocationSession:
         with suppress(Exception):
             await rsd.close()
 
+    async def _any_device_attached(self) -> bool:
+        """Cheap USB check, so 'nothing is plugged in' is not misreported as a tunnel fault."""
+        from pymobiledevice3.usbmux import list_devices
+
+        try:
+            return bool(await asyncio.wait_for(list_devices(), timeout=10))
+        except Exception:
+            # usbmuxd itself is unhappy; let the transports produce the real error.
+            return True
+
     async def _open_transport(self, stack: AsyncExitStack, udid: Optional[str]) -> tuple[Any, str]:
         """Get a connected RSD, preferring the path that needs no privileges."""
+        if not await self._any_device_attached():
+            raise no_device()
+
         try:
             return await self._open_native(stack, udid), TRANSPORT_NATIVE
         except DeviceError:
