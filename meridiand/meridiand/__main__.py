@@ -20,6 +20,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="location updates per second during playback")
     parser.add_argument("--jitter", type=float, default=0.0, metavar="METRES",
                         help="wander a fixed location by up to this many metres")
+    parser.add_argument("--parent-pid", type=int, default=None,
+                        help="exit when this process does, so no orphan holds the port")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
 
@@ -42,6 +44,12 @@ def main(argv: list[str] | None = None) -> int:
 
     token = write_token()
     server = build_server(engine, token, host=args.host, port=args.port)
+
+    if args.parent_pid:
+        from .watchdog import watch_parent
+
+        watch_parent(args.parent_pid, server.shutdown)
+        logging.info("tied to parent process %d", args.parent_pid)
 
     logging.info("meridiand listening on http://%s:%d", args.host, args.port)
     logging.info("token: %s/token", state_dir())

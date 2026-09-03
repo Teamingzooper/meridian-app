@@ -16,8 +16,10 @@ say() { printf '\033[1m%s\033[0m\n' "$*"; }
 say "1/4  Building the app"
 "$ROOT/scripts/build.sh" release >/dev/null
 
-# jedi and IPython back pymobiledevice3's interactive shell, PIL only the icon
-# script, and neither runs here — together they were a third of the payload.
+# jedi and IPython back pymobiledevice3's interactive shell and PIL only the icon
+# script, so none of them run here. prompt_toolkit is deliberately NOT excluded:
+# despite looking like a shell dependency, it sits in the native tunnel's import
+# chain, and dropping it silently breaks device detection.
 say "2/4  Bundling the sidecar"
 PY="${PYTHON:-python3}"
 BUILD_VENV="$ROOT/build/pyi-venv"
@@ -40,7 +42,6 @@ rm -rf "$ROOT/build/pyi"
   --exclude-module parso \
   --exclude-module IPython \
   --exclude-module IPython.core \
-  --exclude-module prompt_toolkit \
   --exclude-module PIL \
   --exclude-module tkinter \
   --exclude-module pytest \

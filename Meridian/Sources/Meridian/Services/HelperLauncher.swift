@@ -89,7 +89,11 @@ final class HelperLauncher {
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: command[0])
+        // Tie the sidecar's life to ours. An orphan keeps holding the port, and
+        // the next launch attaches to it instead of starting a fresh one — so a
+        // stale helper silently outlives the app that spawned it.
         task.arguments = Array(command.dropFirst())
+            + ["--parent-pid", String(ProcessInfo.processInfo.processIdentifier)]
         // Launched from Finder there is no console, so give it a real cwd and env.
         task.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
 

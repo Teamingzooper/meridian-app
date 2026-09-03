@@ -14,7 +14,11 @@ LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSe
 
 echo "Stopping any running instance…"
 pkill -x Meridian 2>/dev/null || true
+# Two shapes to match: "python -m meridiand" from a checkout, and the bundled
+# binary at Contents/Resources/meridiand/meridiand. Matching only the first left
+# stale sidecars holding the port, which the next app then attached to.
 pkill -f "m meridiand" 2>/dev/null || true
+pkill -f "Meridian.app/Contents/Resources/meridiand" 2>/dev/null || true
 sleep 1
 
 if [ -x "$LSREGISTER" ]; then

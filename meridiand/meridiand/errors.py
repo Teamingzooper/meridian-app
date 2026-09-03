@@ -132,6 +132,17 @@ def classify(exc: BaseException) -> DeviceError:
         if entry is not None:
             return DeviceError(*entry)
 
+    # A missing module means a broken build, not a device problem. Saying
+    # "check the cable" here sends people to debug hardware that is working.
+    if isinstance(exc, ImportError):
+        missing = getattr(exc, "name", None) or "a component"
+        return DeviceError(
+            "incomplete_install",
+            f"Meridian's helper is missing {missing}. "
+            "Reinstall Meridian, or rebuild it if you are running from source.",
+            False,
+        )
+
     # Socket-level failures arrive as plain OSErrors with nothing else to go on.
     if isinstance(exc, (ConnectionError, TimeoutError)):
         return DeviceError(

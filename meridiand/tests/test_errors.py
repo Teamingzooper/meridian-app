@@ -103,3 +103,24 @@ class TestNoDeviceGuidance:
 
     def test_it_is_recoverable(self):
         assert no_device().recoverable
+
+
+class TestIncompleteInstall:
+    """A packaging mistake once surfaced as 'check your cable'. Never again."""
+
+    def test_a_missing_module_is_not_blamed_on_the_device(self):
+        error = classify(ModuleNotFoundError("No module named 'prompt_toolkit'",
+                                             name="prompt_toolkit"))
+        assert error.code == "incomplete_install"
+        assert "cable" not in error.message.lower()
+        assert "unplug" not in error.message.lower()
+
+    def test_it_names_the_missing_module(self):
+        error = classify(ModuleNotFoundError("nope", name="prompt_toolkit"))
+        assert "prompt_toolkit" in error.message
+
+    def test_it_survives_an_importerror_with_no_name(self):
+        assert classify(ImportError("something went wrong")).code == "incomplete_install"
+
+    def test_it_is_not_recoverable_by_retrying(self):
+        assert not classify(ImportError("x", name="y")).recoverable

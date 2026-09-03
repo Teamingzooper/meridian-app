@@ -112,11 +112,50 @@ class Engine:
             self._driver.cancel()
         await self._session.close()
 
+    @property
+    def _loop_alive(self) -> bool:
+        return (
+            self._loop is not None
+            and not self._loop.is_closed()
+            and self._thread is not None
+            and self._thread.is_alive()
+        )
+
+    def _restart_loop(self) -> None:
+        """Bring the loop thread back after it has died.
+
+        Without this, one dead loop turns every later call into
+        'Event loop is closed' for the life of the process — the sidecar keeps
+        answering /health, so the app happily attaches to something that can no
+        longer talk to a device.
+        """
+        logger.warning("event loop was not running; restarting it")
+        self._thread = None
+        self._loop = None
+        self._driver = None
+        self._ready.clear()
+        # The old session belonged to the dead loop and cannot be reused.
+        self._session = LocationSession(self._tunneld_address)
+        self.start()
+
     def _submit(self, coro) -> Any:
         """Run a coroutine on the loop thread and wait for its result."""
-        if self._loop is None:
-            raise RuntimeError("engine not started")
-        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        if not self._loop_alive:
+            if self._thread is None and self._loop is None:
+                raise RuntimeError("engine not started")
+            self._restart_loop()
+
+        assert self._loop is not None
+        try:
+            future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        except RuntimeError:
+            # Lost the race between the check above and submitting.
+            coro.close()
+            raise DeviceError(
+                "engine_restarting",
+                "Meridian's helper restarted. Try that again.",
+                True,
+            ) from None
         return future.result(timeout=CALL_TIMEOUT_S)
 
     # ------------------------------------------------------------------ driving
