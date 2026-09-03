@@ -68,8 +68,28 @@ mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 
-hdiutil create -volname "Meridian $VERSION" -srcfolder "$STAGE" \
-  -ov -format UDZO "$DMG" >/dev/null
+# Detach anything still mounted from an earlier build, which is one way hdiutil
+# ends up reporting "Resource busy".
+for mounted in /Volumes/Meridian*; do
+  [ -d "$mounted" ] && hdiutil detach "$mounted" -force -quiet 2>/dev/null || true
+done
+
+# hdiutil intermittently fails with "Resource busy" on CI runners when something
+# else is still touching the staging directory. Retrying clears it; failing the
+# whole release over a transient does not.
+for attempt in 1 2 3 4 5; do
+  if hdiutil create -volname "Meridian $VERSION" -srcfolder "$STAGE" \
+       -ov -format UDZO "$DMG" >/dev/null 2>/tmp/hdiutil.err; then
+    break
+  fi
+  if [ "$attempt" = "5" ]; then
+    echo "hdiutil failed after 5 attempts:" >&2
+    cat /tmp/hdiutil.err >&2
+    exit 1
+  fi
+  echo "     disk image attempt $attempt failed, retrying…"
+  sleep $((attempt * 3))
+done
 
 rm -rf "$STAGE"
 echo
